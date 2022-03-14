@@ -1,0 +1,134 @@
+---
+title: "Getting and Cleaning Data Course Project Notebook"
+output: html_notebook
+---
+
+The purpose of this project is to demonstrate your ability to collect, work with, and clean a data set. The goal is to prepare tidy data that can be used for later analysis. You will be graded by your peers on a series of yes/no questions related to the project. You will be required to submit: 1) a tidy data set as described below, 2) a link to a Github repository with your script for performing the analysis, and 3) a code book that describes the variables, the data, and any transformations or work that you performed to clean up the data called CodeBook.md. You should also include a README.md in the repo with your scripts. This repo explains how all of the scripts work and how they are connected.
+
+One of the most exciting areas in all of data science right now is wearable computing - see for example this article . Companies like Fitbit, Nike, and Jawbone Up are racing to develop the most advanced algorithms to attract new users. The data linked to from the course website represent data collected from the accelerometers from the Samsung Galaxy S smartphone. A full description is available at the site where the data was obtained:
+
+http://archive.ics.uci.edu/ml/datasets/Human+Activity+Recognition+Using+Smartphones 
+
+Here are the data for the project:
+
+ https://d396qusza40orc.cloudfront.net/getdata%2Fprojectfiles%2FUCI%20HAR%20Dataset.zip  
+
+You should create one R script called run_analysis.R that does the following. 
+
+1) Merges the training and the test sets to create one data set.
+
+2) Extracts only the measurements on the mean and standard deviation for each measurement. 
+
+3) Uses descriptive activity names to name the activities in the data set
+
+4) Appropriately labels the data set with descriptive variable names. 
+
+5) From the data set in step 4, creates a second, independent tidy data set with the average of each variable for each activity and each subject.
+
+```{r}
+#Import needed libraries
+library(tidyverse)
+library(reshape2)
+```
+
+If the data directory does not exist, create it
+```{r}
+if(!dir.exists("./data")) {
+  dir.create("./data")
+} else {
+  print("Data directory already exists")
+}
+```
+
+Download the required data from the course website.  The data is in a zip file, so we must download it, then unzip it and then extract the files we want from the zip to a new location so that they can be used
+
+```{r}
+fileUrl <- "https://d396qusza40orc.cloudfront.net/getdata%2Fprojectfiles%2FUCI%20HAR%20Dataset.zip"
+dest <- "./data/HARDataset.zip"
+download.file(fileUrl, dest)
+```
+
+```{r}
+unzip(dest, exdir="./data")
+```
+Now that the file is unzipped, we will read all the test and training sets into tables.  The files are in a new directory called "UCI HAR Dataset"
+
+```{r}
+xTestData <- read.table("./data/UCI HAR Dataset/test/X_test.txt")
+yTestData <- read.table("./data/UCI HAR Dataset/test/Y_test.txt")
+xTrainData <- read.table("./data/UCI HAR Dataset/train/X_train.txt")
+yTrainData <- read.table("./data/UCI HAR Dataset/train/Y_train.txt")
+subject_test <- read.table("./data/UCI HAR Dataset/test/subject_test.txt", col.names = c("Subject"))
+subject_train <- read.table("./data/UCI HAR Dataset/train/subject_train.txt", col.names=c("Subject"))
+features_list <- read.table("./data/UCI HAR Dataset/features.txt", col.names = c("index", "feature_labels"))
+```
+
+Now that all the data are unzipped and in tables, we can proceed with the objective of making a tidy dataset.  First, we want to merge the training and test sets to create one data set.  Start with combining the test and training data for subjects
+
+```{r}
+subject_all <- rbind(subject_train, subject_test)
+
+```
+
+Next, read in and combine the data for features.  Starting with data, then adding labels
+```{r}
+features_data <- rbind(xTestData, xTrainData)
+```
+
+Create a 1 dimensional character vector containing the feature labels from the features_list table
+```{r}
+feature_labels <- features_list$feature_labels
+```
+
+Now we can parse out which columns have mean and standard deviation in their names, in accordance with requirement #2
+```{r}
+features_subset <- grepl('mean\\(\\)|std\\(\\)', feature_labels)
+```
+
+Create a character vector of only the features with mean and std in the name and assign to features_data
+```{r}
+feature_list <- as.character(feature_labels[features_subset])
+colnames(features_data) <- feature_labels
+features_data <- features_data[,features_subset]
+```
+
+Now we need to create a final, tidy data set
+```{r}
+activities_all <- rbind(yTestData, yTrainData)
+colnames(activities_all)<-"activityLabel"
+```
+
+Let's give the activities more descriptive names
+```{r}
+activity_labels <- read.table("./data/UCI HAR Dataset/activity_labels.txt",
+                              sep=" ",
+                              col.names=c("activityLabel","Activity"))
+activities_all <- plyr::join(activities_all, activity_labels, by="activityLabel", 
+                       type="left")
+activities_all$activityLabel <- NULL
+```
+
+Now, we can join all the activities, subjects and features into one data frame
+```{r}
+all_df <- cbind(features_data, activities_all, subject_all)
+```
+
+We can use melt and reshape2 now to make each row have a unique id-variable combination
+```{r}
+tdf <- melt(all_df, id=c("Subject", "Activity"), measure.vars=feature_list)
+tdf <- dcast(tdf, Activity + Subject ~ variable, mean)
+```
+
+Now order by Subject and Activity and re-index the rows and write the final output file
+```{r}
+tdf <- tdf[order(tdf$Subject, tdf$Activity),]
+rownames(tdf) <- 1:nrow(tdf)
+write.table(tdf, file="./data/tidy_data.txt")
+```
+
+
+
+
+
+
+
